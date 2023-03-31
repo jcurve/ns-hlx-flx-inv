@@ -3,7 +3,7 @@
  *@NScriptType MapReduceScript
  */
 
-define([
+ define([
     'N/record',
     'N/file',
     'N/log',
@@ -15,7 +15,8 @@ define([
     'N/format',
     'N/email',
     'N/error',
-    './util/HX_flexible_invoice_util.js'
+    './util/HX_flexible_invoice_util.js',
+    './util/moment.js'
 ],
 
     function (
@@ -30,7 +31,8 @@ define([
         format,
         email,
         error,
-        util) {
+        util,
+        moment) {
 
         var scriptObj = runtime.getCurrentScript();
         var SO_SEARCHID = util.SEARCHID().SOMONTHLY_SRCH_ID;
@@ -40,13 +42,13 @@ define([
             //Determine Execution Day
             var param = util.SCRIPTPARAMS().ISTESTING;
             var isValidDay = util.validExecutionDay(param, 'MONTHLY');
-            /* if (!isValidDay) {
+             if (!isValidDay) {
                 log.debug({
                     title: 'isValidDay',
                     details: 'Do Not Run Today'
                 });
                 return null;
-            } */
+            }
 
             //Retrieve Records to Process
             var fltrs = {};
@@ -222,7 +224,7 @@ define([
 
             //     "JUL", "AUG", "SEPT", "OCT", "NOV", "DEC"
             // };
-    
+
             try {
                 log.debug({
                     title: '*** inside create invoice'
@@ -235,7 +237,6 @@ define([
                     toType: record.Type.INVOICE,
                     isDynamic: true
                 });
-
                 var recLines = invRec.getLineCount({
                     sublistId: 'item'
                 });
@@ -255,8 +256,8 @@ define([
                 var idx = 0;
                 var type = null;
                 var trandate = null;
-                var revisedAmtObject = util.rateRevisionLookup(soId);
-                log.debug("revisedAmtObject",revisedAmtObject);
+                var revisedAmtObject = util.rateRevisionLookupMonth(soId);
+                log.debug("revisedAmtObject", revisedAmtObject);
                 for (var z = 0; z < recLines; z++) {
                     var recLineId = invRec.getSublistValue({
                         sublistId: 'item',
@@ -303,19 +304,19 @@ define([
                                 var rateDate = acd;
 
                             log.debug({ title: 'so, lineId, rateDate', details: soId + ',' + lineId + ',' + rateDate });
-                            log.debug("type of rateDate ",typeof(rateDate));
-                            if(revisedAmtObject.length>0){
-                                var revisedAmtValue = revisedAmtObject.filter(x=>x.lineId==lineId&&((isCheckDateBetwenTwoDate(rateDate,x.startDate,x.endDate))||(isCheckDateMoreThanDate(rateDate,x.startDate)&&!x.endDate)));
-                                if(revisedAmtValue.length==0){
-                                    revisedAmt=0
+                            log.debug("type of rateDate ", typeof (rateDate));
+                            if (revisedAmtObject.length > 0) {
+                                var revisedAmtValue = revisedAmtObject.filter(x => x.lineId == lineId && ((isCheckDateBetwenTwoDate(rateDate, x.startDate, x.endDate)) || (isCheckDateMoreThanDate(rateDate, x.startDate) && !x.endDate)));
+                                if (revisedAmtValue.length == 0) {
+                                    revisedAmt = 0
                                 }
-                                else{
-                                    revisedAmt=revisedAmtValue[0].revisedAmt
+                                else {
+                                    revisedAmt = revisedAmtValue[0].revisedAmt
                                 }
 
                             }
-                            else{
-                                revisedAmt=0
+                            else {
+                                revisedAmt = 0
 
                             }
 
@@ -446,6 +447,21 @@ define([
                         title: 'CreateInvoice Success',
                         details: 'id: ' + invId
                     });
+                    var recUpdate =record.load({
+                        type: 'invoice',
+                        id:  invRec.id,
+                    })
+                    var createDate=recUpdate.getValue('createddate');
+                    var formatteddatetime =  format.format({
+                        value: createDate,
+                        type: format.Type.DATE
+                    });
+                    var firstDay = moment(formatteddatetime).startOf('month').format('D-MMM-YYYY');
+                    log.debug("firstDay", firstDay);
+                    firstDay = format.parse({value:firstDay , type: format.Type.DATE});
+                    recUpdate.setValue('trandate',firstDay);
+                    var recUpdateid=recUpdate.save();
+                    log.debug("recUpdateid",recUpdateid);
 
                 } catch (exsave) {
                     log.debug({
@@ -531,7 +547,7 @@ define([
             }
             var from = new Date(startDate);
             var check = new Date(trandate);
-            if (check >= from ) {
+            if (check >= from) {
                 return true;
             }
             else {
